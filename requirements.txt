@@ -1,0 +1,6 @@
+langchain
+pgvector
+psycopg2
+streamlit
+google-genai
+pypdf
