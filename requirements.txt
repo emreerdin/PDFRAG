@@ -4,3 +4,4 @@ psycopg2
 streamlit
 google-genai
 pypdf
+python-dotenv
