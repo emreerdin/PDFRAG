@@ -1,26 +1,32 @@
-def fixed_size_chunking(text, max_tokens):
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+def text_to_chunks(text):
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50, separators =["\n\n", "\n", ".", " ", ""])
+    texts = text_splitter.split_text(text)
+
+    return texts
+
+
+'''def text_to_chunks(text):
+    if not text:
+        return []
+
     words = text.split()
+
+    chunk_size = 300
+    overlap = 50
+
     chunks = []
-    current_chunk = []
-    current_tokens = 0
+    start = 0
 
-    for word in words:
-        current_tokens += len(word.split())
-        if current_tokens <= max_tokens:
-            current_chunk.append(word)
-        else:
-            chunks.append(' '.join(current_chunk))
-            current_chunk = [word]
-            current_tokens = len(word.split())
-    
-    # Append the last chunk
-    if current_chunk:
-        chunks.append(' '.join(current_chunk))
+    while start < len(words):
+        end = start + chunk_size
+        chunk = words[start:end]
+        chunks.append(" ".join(chunk))
 
-    return chunks
+        if end >= len(words):
+            break
 
-text = "Your long text here..."
-max_tokens = 100
-chunks = fixed_size_chunking(text, max_tokens)
-for i, chunk in enumerate(chunks):
-    print(f"Chunk {i+1}:\n{chunk}\n")
+        start = end - overlap
+
+    return chunks'''
