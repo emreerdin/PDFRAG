@@ -1,10 +1,26 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-def text_to_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50, separators =["\n\n", "\n", ".", " ", ""])
+def text_to_chunks(text, source, page):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", ".", " ", ""]
+    )
+
     texts = text_splitter.split_text(text)
 
-    return texts
+    chunks = []
+    for i, chunk in enumerate(texts):
+        chunks.append({
+            "text": chunk,
+            "metadata": {
+                "source": source,
+                "page": page,
+                "chunk_id": i
+            }
+        })
+
+    return chunks
 
 
 '''def text_to_chunks(text):
