@@ -1,39 +1,35 @@
 import psycopg2
 import json
+import os
+from dotenv import load_dotenv
 from pgvector.psycopg2 import register_vector
 from embedding.embedder import create_sentence_embedding
 
+load_dotenv()
+
 def create_connection():
-    conn = psycopg2.connect(
-        dbname="mydb",
-        user="admin",
-        password="secret",
-        host="localhost",
-        port="5433"
-    )
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
     register_vector(conn)
     return conn
 
-
-def truncate_table(conn):
+def delete_session(conn, session_id):
     cur = conn.cursor()
-    cur.execute("TRUNCATE TABLE document RESTART IDENTITY;")
+    cur.execute("DELETE FROM document WHERE session_id = %s;", (session_id,))
     conn.commit()
     cur.close()
 
-
-def insert_embedding(chunks, embeddings):
+def insert_embedding(session_id, chunks, embeddings):
     conn = create_connection()
+    delete_session(conn, session_id)
     cur = conn.cursor()
-    truncate_table(conn)
-    
-    for chunk, emb in zip(chunks, embeddings):  # .embeddings kaldırıldı
+    for chunk, emb in zip(chunks, embeddings):
         cur.execute(
             """
-            INSERT INTO document (content, embedding, metadata)
-            VALUES (%s, %s, %s)
+            INSERT INTO document (session_id, content, embedding, metadata)
+            VALUES (%s, %s, %s, %s)
             """,
             (
+                session_id,
                 chunk["text"],
                 emb.values,
                 json.dumps(chunk["metadata"])
@@ -43,23 +39,18 @@ def insert_embedding(chunks, embeddings):
     cur.close()
     conn.close()
 
-
-def search_a_sentence_similarity(sentence, limit):
+def search_a_sentence_similarity(session_id, sentence, limit):
     conn = create_connection()
     cur = conn.cursor()
-
     sentence_embedded = create_sentence_embedding(sentence).embeddings[0].values
-
     cur.execute("""
         SELECT content, metadata
         FROM document
+        WHERE session_id = %s
         ORDER BY embedding <=> %s::vector
         LIMIT %s;
-    """, (sentence_embedded, limit))
-
+    """, (session_id, sentence_embedded, limit))
     results = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return results

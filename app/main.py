@@ -2,11 +2,11 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import io
+import uuid
 from ingestion.pdf_loader import parse_pdf
 from ingestion.text_splitter import text_to_chunks
 from pipeline.database import insert_embedding, search_a_sentence_similarity
 from embedding.embedder import create_embeddings
-from pipeline.LLM import get_answer
 
 app = FastAPI()
 
@@ -19,6 +19,7 @@ app.add_middleware(
 )
 
 class AskRequest(BaseModel):
+    session_id: str
     question: str
 
 class AskResponse(BaseModel):
@@ -39,12 +40,10 @@ def upload_info():
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    # Dosya adı kontrolü
     filename = file.filename or ""
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Sadece PDF dosyası kabul edilir.")
 
-    # Dosyayı oku
     try:
         contents = await file.read()
     except Exception:
@@ -53,7 +52,6 @@ async def upload(file: UploadFile = File(...)):
     if len(contents) == 0:
         raise HTTPException(status_code=400, detail="Yüklenen dosya boş.")
 
-    # PDF parse
     try:
         pdf_file = io.BytesIO(contents)
         pdf_file.name = filename
@@ -64,7 +62,6 @@ async def upload(file: UploadFile = File(...)):
     if not pages:
         raise HTTPException(status_code=422, detail="PDF'den sayfa okunamadı.")
 
-    # Chunk'lara böl
     try:
         all_chunks = []
         for page in pages:
@@ -80,15 +77,16 @@ async def upload(file: UploadFile = File(...)):
     if not all_chunks:
         raise HTTPException(status_code=422, detail="PDF boş veya metin içermiyor.")
 
-    # Embedding oluştur ve kaydet
     try:
+        session_id = str(uuid.uuid4())
         embeddings = create_embeddings(all_chunks)
-        insert_embedding(all_chunks, embeddings)
+        insert_embedding(session_id, all_chunks, embeddings)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding hatası: {str(e)}")
 
     return {
         "message": "Yükleme başarılı",
+        "session_id": session_id,
         "chunks": len(all_chunks),
         "pages": len(pages),
         "filename": filename,
@@ -100,17 +98,16 @@ async def ask(body: AskRequest):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="Soru boş olamaz.")
 
-    # Benzer chunk'ları getir
     try:
-        records = search_a_sentence_similarity(body.question, 5)
+        records = search_a_sentence_similarity(body.session_id, body.question, 5)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Arama hatası: {str(e)}")
 
     if not records:
         raise HTTPException(status_code=404, detail="İlgili içerik bulunamadı.")
 
-    # LLM'e gönder
     try:
+        from pipeline.LLM import get_answer
         context_text = "\n\n".join([r[0] for r in records])
         answer = get_answer(body.question, context_text)
     except Exception as e:
