@@ -6,13 +6,14 @@ from ingestion.pdf_loader import parse_pdf
 from ingestion.text_splitter import text_to_chunks
 from pipeline.database import insert_embedding, search_a_sentence_similarity
 from embedding.embedder import create_embeddings
-from pipeline.LLM import get_answer, check_tokens
+from pipeline.LLM import get_answer
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -26,6 +27,11 @@ class AskResponse(BaseModel):
     context_used: list[str]
 
 
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "RAG API çalışıyor"}
+
+
 @app.get("/upload")
 def upload_info():
     return {"detail": "Use POST /upload with a multipart PDF file."}
@@ -33,45 +39,82 @@ def upload_info():
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Sadece PDF kabul edilir")
+    # Dosya adı kontrolü
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Sadece PDF dosyası kabul edilir.")
 
-    contents = await file.read()
-    pdf_file = io.BytesIO(contents)
-    pdf_file.name = file.filename
+    # Dosyayı oku
+    try:
+        contents = await file.read()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Dosya okunurken hata oluştu.")
 
-    pages = parse_pdf(pdf_file)
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Yüklenen dosya boş.")
 
-    all_chunks = []
-    for page in pages:
-        chunks = text_to_chunks(
-            text=page["text"],
-            source=file.filename,
-            page=page["page"]
-        )
-        all_chunks.extend(chunks)
+    # PDF parse
+    try:
+        pdf_file = io.BytesIO(contents)
+        pdf_file.name = filename
+        pages = parse_pdf(pdf_file)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"PDF parse hatası: {str(e)}")
+
+    if not pages:
+        raise HTTPException(status_code=422, detail="PDF'den sayfa okunamadı.")
+
+    # Chunk'lara böl
+    try:
+        all_chunks = []
+        for page in pages:
+            chunks = text_to_chunks(
+                text=page["text"],
+                source=filename,
+                page=page["page"]
+            )
+            all_chunks.extend(chunks)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Metin bölme hatası: {str(e)}")
 
     if not all_chunks:
-        raise HTTPException(status_code=422, detail="PDF boş veya okunamadı")
+        raise HTTPException(status_code=422, detail="PDF boş veya metin içermiyor.")
 
-    embeddings = create_embeddings(all_chunks)
-    insert_embedding(all_chunks, embeddings)
+    # Embedding oluştur ve kaydet
+    try:
+        embeddings = create_embeddings(all_chunks)
+        insert_embedding(all_chunks, embeddings)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding hatası: {str(e)}")
 
-    return {"message": "Yükleme başarılı", "chunks": len(all_chunks)}
+    return {
+        "message": "Yükleme başarılı",
+        "chunks": len(all_chunks),
+        "pages": len(pages),
+        "filename": filename,
+    }
 
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(body: AskRequest):
     if not body.question.strip():
-        raise HTTPException(status_code=400, detail="Soru boş olamaz")
+        raise HTTPException(status_code=400, detail="Soru boş olamaz.")
 
-    records = search_a_sentence_similarity(body.question, 5)
+    # Benzer chunk'ları getir
+    try:
+        records = search_a_sentence_similarity(body.question, 5)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Arama hatası: {str(e)}")
 
     if not records:
-        raise HTTPException(status_code=404, detail="İlgili içerik bulunamadı")
+        raise HTTPException(status_code=404, detail="İlgili içerik bulunamadı.")
 
-    context_text = "\n\n".join([r[0] for r in records])
-    answer = get_answer(body.question, context_text)
+    # LLM'e gönder
+    try:
+        context_text = "\n\n".join([r[0] for r in records])
+        answer = get_answer(body.question, context_text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM hatası: {str(e)}")
 
     return AskResponse(
         question=body.question,
