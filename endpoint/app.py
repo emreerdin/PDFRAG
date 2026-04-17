@@ -53,6 +53,11 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get("/upload")
+def upload_info():
+    return {"detail": "Use POST /upload with a multipart PDF file."}
+
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload_pdf(file: UploadFile = File(...)):
     """

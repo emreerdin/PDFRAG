@@ -26,6 +26,11 @@ class AskResponse(BaseModel):
     context_used: list[str]
 
 
+@app.get("/upload")
+def upload_info():
+    return {"detail": "Use POST /upload with a multipart PDF file."}
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     if not file.filename.endswith(".pdf"):
