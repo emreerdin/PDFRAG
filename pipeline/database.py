@@ -25,10 +25,9 @@ def truncate_table(conn):
 def insert_embedding(chunks, embeddings):
     conn = create_connection()
     cur = conn.cursor()
-
     truncate_table(conn)
-
-    for chunk, emb in zip(chunks, embeddings.embeddings):
+    
+    for chunk, emb in zip(chunks, embeddings):  # .embeddings kaldırıldı
         cur.execute(
             """
             INSERT INTO document (content, embedding, metadata)
@@ -40,7 +39,6 @@ def insert_embedding(chunks, embeddings):
                 json.dumps(chunk["metadata"])
             )
         )
-
     conn.commit()
     cur.close()
     conn.close()
