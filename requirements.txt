@@ -1,4 +1,4 @@
-langchain
+langchain-text-splitters
 pgvector
 psycopg2
 streamlit
@@ -6,3 +6,5 @@ google-genai
 pypdf
 python-dotenv
 fastapi
+uvicorn
+pydantic
