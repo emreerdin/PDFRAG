@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 import io
 
+from fastapi.middleware.cors import CORSMiddleware
 from ingestion.pdf_loader import parse_pdf
 from ingestion.text_splitter import text_to_chunks
 from pipeline.database import insert_embedding, search_a_sentence_similarity
@@ -16,13 +17,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # Tüm adreslere izin ver (Geliştirme aşaması için)
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ── Request / Response modelleri ─────────────────────────────
 
